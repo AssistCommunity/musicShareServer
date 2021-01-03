@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -22,7 +23,7 @@ const (
 )
 
 type Client struct {
-	username string `json:"username"`
+	Username string `json:"username"`
 	conn     *websocket.Conn
 	hub      *Hub
 	room     *Room
@@ -31,7 +32,7 @@ type Client struct {
 
 func NewClient(username string, conn *websocket.Conn, hub *Hub, room *Room) *Client {
 	return &Client{
-		username: username,
+		Username: username,
 		conn:     conn,
 		hub:      hub,
 		room:     room,
@@ -76,6 +77,7 @@ func (c *Client) writePump() {
 	for {
 		select {
 		case message, ok := <-c.send:
+			fmt.Println("here")
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -117,7 +119,7 @@ func (c *Client) disconnect() {
 func (c *Client) handleMessage(jsonMessage []byte) {
 	var message Message
 
-	log.Printf("Message recieved from %s\n", c.username)
+	log.Printf("Message recieved from %s\n", c.Username)
 	if err := json.Unmarshal(jsonMessage, &message); err != nil {
 		log.Printf("Invalid message %s", err)
 		return

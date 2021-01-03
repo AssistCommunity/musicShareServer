@@ -1,23 +1,46 @@
 package main
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+)
 
 type Room struct {
-	id        string
-	clients   map[*Client]bool
+	Id        string           `json:"room_id"`
+	Host      string           `json:"room_host"`
+	Clients   map[*Client]bool `json:"-"`
+	Queue     *Queue           `json:"room_queue"`
 	join      chan *Client
 	leave     chan *Client
 	broadcast chan *Message
 }
 
-func NewRoom(id string) *Room {
+func NewRoom(id string, host string) *Room {
 	return &Room{
-		id:        id,
-		clients:   make(map[*Client]bool),
+		Id:        id,
+		Host:      host,
+		Clients:   make(map[*Client]bool),
 		join:      make(chan *Client),
 		leave:     make(chan *Client),
 		broadcast: make(chan *Message),
+		Queue:     NewQueue(),
 	}
+}
+
+func (r *Room) EncodeInfo() []byte {
+	type EncodingRoom struct {
+		Room
+		Clients []string
+	}
+	encoded, err := json.Marshal(r)
+
+	if err != nil {
+		log.Printf("Could not encode room info: %q\n", err)
+		return []byte("{\"error\": \"Cannot encode room info\"}")
+	}
+
+	return encoded
 }
 
 func (r *Room) Run() {
@@ -28,34 +51,75 @@ func (r *Room) Run() {
 		case client := <-r.leave:
 			r.leaveClientFromRoom(client)
 		case message := <-r.broadcast:
-			fmt.Println("New message in room", r.id)
-			r.broadcastMessageToClientsInRoom(message)
+			fmt.Println("New message in room", r.Id)
+			r.handleMessage(message)
 		}
 	}
 }
 
 func (r *Room) notifyClientJoined(client *Client) {
 	message := &Message{
-		Action: LeaveAction,
+		Action: JoinRoomAction,
 		Target: r,
+		Sender: client,
 	}
-	r.broadcastMessageToClientsInRoom(message)
+	go r.handleMessage(message)
+}
+
+func (r *Room) notifyClientLeft(client *Client) {
+	message := &Message{
+		Action: LeaveRoomAction,
+		Target: r,
+		Sender: client,
+	}
+	go r.handleMessage(message)
 }
 
 func (r *Room) joinClientInRoom(client *Client) {
+	r.Clients[client] = true
 	r.notifyClientJoined(client)
-	r.clients[client] = true
 }
 
 func (r *Room) leaveClientFromRoom(client *Client) {
-	if _, ok := r.clients[client]; ok {
-		delete(r.clients, client)
+	if _, ok := r.Clients[client]; ok {
+		delete(r.Clients, client)
 	}
 }
 
-func (r *Room) broadcastMessageToClientsInRoom(m *Message) {
+func (r *Room) handleMessage(m *Message) {
+	log.Printf("New message: %v\n", m)
+
+	// Side effects
+	switch m.Action {
+	case InfoReqAction:
+		// Send room info
+		resp := NewMessage(InfoRespAction)
+		resp.SetArgs("info", r)
+		m.Sender.send <- resp.Encode()
+
+	case AddTrackAction:
+		if val, ok := m.Args["track_name"]; ok {
+			r.Queue.AddToQueue(val.(string))
+		} else {
+			log.Printf("Invalid add track message recieved\n")
+		}
+
+	case NextTrackAction:
+		r.Queue.NextTrack()
+
+	case PrevTrackAction:
+		r.Queue.PrevTrack()
+
+	case JumpTrackAction:
+		if val, ok := m.Args["track_index"]; ok {
+			r.Queue.JumpToIndex(val.(int))
+		}
+	}
+
+	fmt.Println("Messages are being handled. ")
+
 	bytes := m.Encode()
-	for client := range r.clients {
+	for client := range r.Clients {
 		client.send <- bytes
 	}
 }

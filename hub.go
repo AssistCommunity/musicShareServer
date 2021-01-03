@@ -52,20 +52,18 @@ func (h *Hub) broadcastToClients(message []byte) {
 	}
 }
 
-func (h *Hub) getRoomById(id string) *Room {
+func (h *Hub) getRoomById(id string) (*Room, error) {
 	var foundRoom *Room
 	for room := range h.rooms {
-		if id == room.id {
+		if id == room.Id {
 			foundRoom = room
 			break
 		}
 	}
 
 	if foundRoom == nil {
-		foundRoom = NewRoom(id)
-		h.rooms[foundRoom] = true
-		go foundRoom.Run()
+		return nil, fmt.Errorf("Cannot find room with id: %s", id)
 	}
 
-	return foundRoom
+	return foundRoom, nil
 }
