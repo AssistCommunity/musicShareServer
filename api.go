@@ -8,18 +8,28 @@ import (
 	"time"
 )
 
+func enableCors(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+}
+
 func (h *Hub) CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+
 	decoder := json.NewDecoder(r.Body)
 
 	var data struct {
-		username string
+		Username string `json:"username"`
+	}
+
+	var resp struct {
+		RoomId string `json:"room_id"`
 	}
 
 	decoder.Decode(&data)
 
 	id := "Room_" + fmt.Sprintf("%d", time.Now().Unix())
 
-	room := NewRoom(id, data.username)
+	room := NewRoom(id, data.Username)
 
 	log.Printf("Created room: %v+\n", room)
 
@@ -28,9 +38,20 @@ func (h *Hub) CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	go room.Run()
 
 	w.WriteHeader(http.StatusCreated)
+
+	resp.RoomId = room.Id
+
+	respBody, err := json.Marshal(resp)
+
+	if err != nil {
+		log.Printf("Cannot write response: %s\n", err)
+	}
+
+	_, err = w.Write(respBody)
 }
 
 func (h *Hub) WebsocketHandler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
 
 	q := r.URL.Query()
 
